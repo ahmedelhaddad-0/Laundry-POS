@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type React from "react";
 import { AppProvider, useApp } from "./AppProvider";
 import type { InventoryItem, Customer, ServiceItem, OrderStatus } from "@/types";
 import {
@@ -917,6 +918,18 @@ function LayananView() {
 // ─── المخزون ─────────────────────────────────────────────────────────────
 
 const CATS = ["الكل","مواد الغسيل","معطرات","تغليف","معدات"];
+const CAT_COLOR: Record<string, string> = {
+  "مواد الغسيل": "#0EA5E9",
+  "معطرات":      "#8B5CF6",
+  "تغليف":       "#F59E0B",
+  "معدات":       "#10B981",
+};
+const CAT_ICON_NAME: Record<string, string> = {
+  "مواد الغسيل": "FlaskConical",
+  "معطرات":      "Droplets",
+  "تغليف":       "ShoppingBag",
+  "معدات":       "RefreshCw",
+};
 const EMPTY_INV_FORM = { sku: "", name: "", category: "مواد الغسيل", unit: "كجم", stock: "", minStock: "", price: "", supplier: "" };
 
 function InventoryView() {
@@ -951,7 +964,16 @@ function InventoryView() {
   function handleSave() {
     if (!form.name.trim()) return;
     const stamp = nowStamp();
-    const data = { sku: form.sku || nextSku(inventory, form.category), name: form.name, category: form.category, unit: form.unit, stock: Number(form.stock)||0, minStock: Number(form.minStock)||0, price: Number(form.price)||0, supplier: form.supplier, lastRestock: stamp.date, color: CAT_COLOR[form.category]||"#64748B", icon: CAT_ICON[form.category]||Boxes };
+    const iconName = CAT_ICON_NAME[form.category] ?? "Package";
+    const color = CAT_COLOR[form.category] ?? "#64748B";
+    const data = {
+      sku: form.sku || nextSku(inventory, form.category),
+      name: form.name, category: form.category, unit: form.unit,
+      stock: Number(form.stock) || 0, minStock: Number(form.minStock) || 0,
+      price: Number(form.price) || 0, supplier: form.supplier,
+      lastRestock: editId !== null ? (inventory.find(i => i.id === editId)?.lastRestock ?? "-") : stamp.date,
+      color, icon: iconName as unknown as React.ElementType,
+    };
     if (editId !== null) updateInventoryItem(editId, data);
     else addInventoryItem(data);
     setShowForm(false);

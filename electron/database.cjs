@@ -152,25 +152,6 @@ function seedData() {
   svcs.forEach((r) => inss.run(r));
   inss.free();
 
-  // Inventory
-  const inv = [
-    [1,"BHN-001","مسحوق غسيل فاخر","مواد الغسيل","كجم",48,10,18000,"CV Bersih Jaya","-","#0EA5E9","FlaskConical"],
-    [2,"BHN-002","سائل غسيل أبيض","مواد الغسيل","لتر",32,8,24000,"CV Bersih Jaya","-","#0EA5E9","Droplets"],
-    [3,"BHN-003","منعم أقمشة لافندر","معطرات","لتر",7,10,32000,"PT Harum Wangi","-","#8B5CF6","Droplets"],
-    [4,"BHN-004","معطر ملابس ورد","معطرات","لتر",14,8,28000,"PT Harum Wangi","-","#8B5CF6","Droplets"],
-    [5,"BHN-005","مبيض كلور","مواد الغسيل","لتر",3,5,12000,"CV Bersih Jaya","-","#EF4444","FlaskConical"],
-    [6,"PKG-001","أكياس تغليف 30×50 سم","تغليف","قطعة",850,200,350,"Toko Plastik Maju","-","#F59E0B","ShoppingBag"],
-    [7,"PKG-002","شماعات ملابس","تغليف","قطعة",210,100,2500,"Toko Plastik Maju","-","#F59E0B","Shirt"],
-    [8,"PKG-003","ورق طابعة 58 ملم","تغليف","لفة",12,5,15000,"Toko Elektronik Serba Ada","-","#F59E0B","Tag"],
-    [9,"ALT-001","غسالة أمامية 8 كجم","معدات","وحدة",3,1,4500000,"Distributor LG","-","#10B981","RefreshCw"],
-    [10,"ALT-002","مكواة بخار صناعية","معدات","وحدة",2,1,850000,"Toko Elektronik Serba Ada","-","#10B981","Wind"],
-    [11,"ALT-003","ميزان رقمي 30 كجم","معدات","وحدة",4,2,380000,"Toko Elektronik Serba Ada","-","#10B981","Boxes"],
-    [12,"BHN-006","سائل التنظيف الجاف","مواد الغسيل","لتر",9,5,75000,"PT Kimia Prima","-","#6366F1","FlaskConical"],
-  ];
-  const insi = db.prepare(`INSERT OR IGNORE INTO inventory VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`);
-  inv.forEach((r) => insi.run(r));
-  insi.free();
-
   // Default settings
   db.run(`INSERT OR IGNORE INTO settings VALUES ('currency', 'ج.م')`);
   db.run(`INSERT OR IGNORE INTO settings VALUES ('tax', '1')`);

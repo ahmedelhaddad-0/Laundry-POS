@@ -275,8 +275,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   const updateInventoryItem = (id: number, data: Partial<InventoryItem>) => {
-    setInventory((p) => p.map((i) => (i.id === id ? { ...i, ...data } : i)));
-    api?.updateInventoryItem(id, data);
+    // Resolve icon string → component for React state
+    const stateData = data.icon && typeof data.icon !== "function"
+      ? { ...data, icon: resolveIcon(data.icon) }
+      : data;
+    setInventory((p) => p.map((i) => (i.id === id ? { ...i, ...stateData } : i)));
+    // Convert icon component → string name for IPC/DB
+    const dbData = data.icon && typeof data.icon === "function"
+      ? { ...data, icon: (data.icon as React.ElementType & { name?: string }).name ?? "Package" }
+      : data;
+    api?.updateInventoryItem(id, dbData as never);
   };
 
   const deleteInventoryItem = (id: number) => {
