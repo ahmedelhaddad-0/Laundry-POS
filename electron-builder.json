@@ -1,0 +1,29 @@
+{
+  "appId": "com.denur.laundry",
+  "productName": "دينور لاندري",
+  "directories": {
+    "output": "release"
+  },
+  "files": [
+    "dist/**/*",
+    "electron/**/*",
+    "node_modules/sql.js/**/*",
+    "package.json"
+  ],
+  "win": {
+    "target": "nsis",
+    "icon": "public/icon.ico"
+  },
+  "linux": {
+    "target": "AppImage",
+    "category": "Office"
+  },
+  "mac": {
+    "target": "dmg",
+    "icon": "public/icon.icns"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true
+  }
+}
