@@ -1,4 +1,4 @@
-# 🧺Laundry POS By Hadrex
+# Laundry POS BY Hadrex
 
 <div align="center">
 
