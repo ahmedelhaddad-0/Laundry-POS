@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type React from "react";
 import { AppProvider, useApp } from "./AppProvider";
 import type { InventoryItem, Customer, ServiceItem, OrderStatus } from "@/types";
@@ -1260,12 +1260,8 @@ function LaporanView() {
   const currentMonthOrders = orders.filter((o) => o.date.includes(`${currentMonth} ${currentYear}`) && o.status !== "batal");
   const currentMonthRev = currentMonthOrders.reduce((a, o) => a + o.total, 0);
 
-  const reportWithCurrent = [
-    ...monthlyReport.filter((m) => m.month !== currentMonth),
-    { month: currentMonth, pendapatan: currentMonthRev, order: currentMonthOrders.length, pelanggan: customers.length },
-  ];
-
-  const finalMonthlyReport = reportWithCurrent.length > 0 ? reportWithCurrent : [{ month: currentMonth, pendapatan: 0, order: 0, pelanggan: 0 }];
+  // monthlyReport is computed live from orders in AppProvider — use it directly
+  const finalMonthlyReport = monthlyReport.length > 0 ? monthlyReport : [{ month: currentMonth, pendapatan: 0, order: 0, pelanggan: 0 }];
   const totalRev = finalMonthlyReport.reduce((a, m) => a + m.pendapatan, 0);
   const totalOrder = finalMonthlyReport.reduce((a, m) => a + m.order, 0);
 
@@ -1375,24 +1371,68 @@ function LaporanView() {
 
 function PengaturanView() {
   const { currency, setCurrency, factoryReset } = useApp();
+  const settingsApi = typeof window !== "undefined" ? (window as any).electronAPI : undefined;
   const [activeTab, setActiveTab] = useState("toko");
   const [resetConfirm, setResetConfirm] = useState(false);
   const [resetDone, setResetDone] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [tokoForm, setTokoForm] = useState({ nama: "دينور لاندري", slogan: "نظيف، سريع، موثوق", alamat: "شارع بوغور الرئيسي رقم 88، جاكرتا الشرقية", telp: "021-1234-5678", wa: "0812-3456-7890", jamBuka: "07:00 – 21:00", hariBuka: "الاثنين – الأحد" });
-  const [akunForm, setAkunForm] = useState({ nama: "مدير دينور", username: "admin_denur", email: "admin@denurlaundry.com", hp: "0812-3456-7890" });
-  const [pajak, setPajak] = useState("1");
-  const [autoprint, setAutoprint] = useState(true);
-  const [footerStruk, setFooterStruk] = useState("شكراً لاستخدامك خدمات دينور لاندري. تواصل معنا على 0812-3456-7890.");
+  const [tokoForm, setTokoForm] = useState({ nama: "دينور لاندري", slogan: "نظيف، سريع، موثوق", alamat: "", telp: "", wa: "", jamBuka: "07:00 – 22:00", hariBuka: "الاثنين – الأحد" });
+  const [akunForm, setAkunForm] = useState({ nama: "مدير النظام", username: "admin", email: "", hp: "" });
+  const [pajak, setPajak] = useState("0");
+  const [autoprint, setAutoprint] = useState(false);
+  const [footerStruk, setFooterStruk] = useState("شكراً لاستخدامك خدماتنا.");
   const [payments, setPayments] = useState([
-    { id: "tunai", label: "نقدي", desc: "الدفع مباشرة عند الكاشير", active: true },
-    { id: "bca", label: "تحويل بنكي (BCA)", desc: "رقم الحساب: 123-456-7890 باسم دينور لاندري", active: true },
-    { id: "mandiri", label: "تحويل بنكي (Mandiri)", desc: "رقم الحساب: 098-765-4321 باسم دينور لاندري", active: true },
-    { id: "qris", label: "QRIS", desc: "مسح رمز QR لجميع المحافظ الرقمية", active: true },
-    { id: "ovo", label: "OVO / GoPay", desc: "الدفع عبر المحفظة الرقمية", active: false },
+    { id: "tunai", label: "نقدي",        desc: "الدفع مباشرة عند الكاشير",          active: true  },
+    { id: "bca",   label: "تحويل بنكي", desc: "رقم الحساب: —",                      active: false },
+    { id: "qris",  label: "QRIS",        desc: "مسح رمز QR لجميع المحافظ الرقمية", active: false },
+    { id: "ovo",   label: "OVO / GoPay", desc: "الدفع عبر المحفظة الرقمية",         active: false },
   ]);
 
-  function handleSave() {
+  // Load persisted settings from DB on mount
+  useEffect(() => {
+    if (!settingsApi) return;
+    Promise.all([
+      settingsApi.getSetting("storeName"),    settingsApi.getSetting("storeSlogan"),
+      settingsApi.getSetting("storeAddress"), settingsApi.getSetting("storeTelp"),
+      settingsApi.getSetting("storeWa"),      settingsApi.getSetting("storeJamBuka"),
+      settingsApi.getSetting("storeHariBuka"),settingsApi.getSetting("akunNama"),
+      settingsApi.getSetting("akunUsername"), settingsApi.getSetting("akunEmail"),
+      settingsApi.getSetting("akunHp"),       settingsApi.getSetting("tax"),
+      settingsApi.getSetting("autoprint"),    settingsApi.getSetting("footerStruk"),
+      settingsApi.getSetting("payMethods"),
+    ]).then((results: any[]) => {
+      const g = (r: any) => (r?.ok && r?.data != null ? r.data : null);
+      const [sNm, sSl, sAd, sTl, sWa, sJb, sHb, aNm, aUn, aEm, aHp, tax, ap, fs, pm] = results.map(g);
+      setTokoForm((p) => ({ nama: sNm ?? p.nama, slogan: sSl ?? p.slogan, alamat: sAd ?? p.alamat, telp: sTl ?? p.telp, wa: sWa ?? p.wa, jamBuka: sJb ?? p.jamBuka, hariBuka: sHb ?? p.hariBuka }));
+      setAkunForm((p) => ({ nama: aNm ?? p.nama, username: aUn ?? p.username, email: aEm ?? p.email, hp: aHp ?? p.hp }));
+      if (tax) setPajak(tax);
+      if (ap !== null) setAutoprint(ap === "true");
+      if (fs) setFooterStruk(fs);
+      if (pm) { try { setPayments(JSON.parse(pm)); } catch {} }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function handleSave() {
+    if (settingsApi) {
+      await Promise.all([
+        settingsApi.setSetting("storeName",     tokoForm.nama),
+        settingsApi.setSetting("storeSlogan",   tokoForm.slogan),
+        settingsApi.setSetting("storeAddress",  tokoForm.alamat),
+        settingsApi.setSetting("storeTelp",     tokoForm.telp),
+        settingsApi.setSetting("storeWa",       tokoForm.wa),
+        settingsApi.setSetting("storeJamBuka",  tokoForm.jamBuka),
+        settingsApi.setSetting("storeHariBuka", tokoForm.hariBuka),
+        settingsApi.setSetting("akunNama",      akunForm.nama),
+        settingsApi.setSetting("akunUsername",  akunForm.username),
+        settingsApi.setSetting("akunEmail",     akunForm.email),
+        settingsApi.setSetting("akunHp",        akunForm.hp),
+        settingsApi.setSetting("tax",           pajak),
+        settingsApi.setSetting("autoprint",     String(autoprint)),
+        settingsApi.setSetting("footerStruk",   footerStruk),
+        settingsApi.setSetting("payMethods",    JSON.stringify(payments)),
+      ]);
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   }
@@ -1532,57 +1572,81 @@ function PengaturanView() {
             <h2 className="text-sm font-bold mb-1" style={{ fontFamily: "'IBM Plex Sans Arabic', sans-serif" }}>النظام</h2>
             <p className="text-[11px] text-muted-foreground mb-5">إدارة بيانات النظام وضبط المصنع.</p>
 
-            <div className="border border-red-200 rounded-xl p-4 bg-red-50/60">
-              <div className="flex items-start gap-3 mb-4">
-                <div className="w-9 h-9 rounded-lg bg-red-100 flex items-center justify-center shrink-0">
-                  <RefreshCw size={16} className="text-red-600" />
-                </div>
+            {resetDone ? (
+              <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-5 flex items-center gap-3">
+                <CheckCircle size={22} className="text-emerald-600 shrink-0" />
                 <div>
-                  <p className="text-xs font-semibold text-red-700 mb-0.5">ضبط المصنع</p>
-                  <p className="text-[11px] text-red-600 leading-relaxed">
-                    يحذف هذا الإجراء جميع الطلبات، سجل المخزون، ومعاملات الخزينة بشكل نهائي. تبقى الخدمات والمخزون والإعدادات كما هي. لا يمكن التراجع عن هذا الإجراء.
-                  </p>
+                  <p className="text-sm font-bold text-emerald-700">تم ضبط المصنع بنجاح</p>
+                  <p className="text-xs text-emerald-600 mt-0.5">النظام الآن نظيف تماماً. يمكنك البدء من جديد.</p>
                 </div>
               </div>
-
-              {!resetConfirm ? (
+            ) : !resetConfirm ? (
+              <div className="rounded-xl border-2 border-red-300 bg-red-50 p-5">
+                <div className="flex items-center gap-2 mb-3">
+                  <AlertCircle size={20} className="text-red-600 shrink-0" />
+                  <p className="text-sm font-black text-red-700" style={{ fontFamily: "'IBM Plex Sans Arabic', sans-serif" }}>⚠️ ضبط المصنع — تحذير هام</p>
+                </div>
+                <p className="text-xs font-bold text-red-800 leading-relaxed mb-3" style={{ fontFamily: "'IBM Plex Sans Arabic', sans-serif" }}>
+                  الضغط على هذا الزر سيؤدي إلى الحذف النهائي والكامل لكل البيانات الموجودة في النظام، وتشمل:
+                </p>
+                <ul className="text-xs font-bold text-red-800 space-y-1.5 mb-4 pr-3" style={{ fontFamily: "'IBM Plex Sans Arabic', sans-serif" }}>
+                  {[
+                    "جميع الطلبات الحالية والتاريخية بدون استثناء",
+                    "جميع بيانات العملاء المسجلين في النظام",
+                    "جميع الخدمات المضافة وأسعارها",
+                    "جميع عناصر المخزون وكميات المخزون",
+                    "جميع حركات المخزون وسجل الاستلام",
+                    "جميع معاملات الخزينة (الإيداع والسحب)",
+                    "جميع إعدادات النظام (اسم المتجر، العملة، الطابعة...)",
+                  ].map((item) => (
+                    <li key={item} className="flex items-start gap-2">
+                      <span className="text-red-500 mt-0.5 shrink-0">■</span>
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-xs font-black text-red-900 mb-4 p-3 bg-red-100 rounded-lg border border-red-300" style={{ fontFamily: "'IBM Plex Sans Arabic', sans-serif" }}>
+                  🚨 لا يمكن التراجع عن هذا الإجراء بأي طريقة. سيُفقد كل شيء بشكل دائم.
+                </p>
                 <button
                   onClick={() => setResetConfirm(true)}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-red-600 text-white hover:bg-red-700 transition-colors"
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-xs font-black bg-red-600 text-white hover:bg-red-700 transition-colors border-2 border-red-700"
+                  style={{ fontFamily: "'IBM Plex Sans Arabic', sans-serif" }}
                 >
-                  <RefreshCw size={13} /> ضبط المصنع
+                  <RefreshCw size={14} /> ضبط المصنع وحذف كل البيانات
                 </button>
-              ) : (
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold text-red-700">هل أنت متأكد؟ سيتم حذف جميع البيانات التشغيلية نهائياً.</p>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => {
-                        factoryReset();
-                        setResetConfirm(false);
-                        setResetDone(true);
-                        setTimeout(() => setResetDone(false), 3000);
-                      }}
-                      className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-red-600 text-white hover:bg-red-700 transition-colors"
-                    >
-                      <RefreshCw size={13} /> نعم، امسح كل شيء
-                    </button>
-                    <button
-                      onClick={() => setResetConfirm(false)}
-                      className="px-4 py-2 border border-border rounded-lg text-xs font-medium text-muted-foreground hover:bg-muted transition-colors"
-                    >
-                      إلغاء
-                    </button>
-                  </div>
+              </div>
+            ) : (
+              <div className="rounded-xl border-2 border-red-500 bg-red-100 p-5">
+                <p className="text-sm font-black text-red-900 mb-2" style={{ fontFamily: "'IBM Plex Sans Arabic', sans-serif" }}>
+                  🚨 تأكيد أخير — هل أنت متأكد تماماً؟
+                </p>
+                <p className="text-xs font-bold text-red-800 leading-relaxed mb-5" style={{ fontFamily: "'IBM Plex Sans Arabic', sans-serif" }}>
+                  سيتم الآن مسح قاعدة البيانات بالكامل وإعادة النظام إلى حالته الأولى. لن تتمكن من استعادة أي بيانات بعد هذه الخطوة.
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      factoryReset();
+                      setResetConfirm(false);
+                      setResetDone(true);
+                      setTimeout(() => setResetDone(false), 5000);
+                    }}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-xs font-black bg-red-700 text-white hover:bg-red-800 transition-colors border-2 border-red-900"
+                    style={{ fontFamily: "'IBM Plex Sans Arabic', sans-serif" }}
+                  >
+                    <RefreshCw size={14} /> نعم، امسح كل شيء نهائياً
+                  </button>
+                  <button
+                    onClick={() => setResetConfirm(false)}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-xs font-bold border-2 border-gray-400 text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+                    style={{ fontFamily: "'IBM Plex Sans Arabic', sans-serif" }}
+                  >
+                    إلغاء — الرجوع للسلامة
+                  </button>
                 </div>
-              )}
-
-              {resetDone && (
-                <div className="mt-3 flex items-center gap-1.5 text-xs text-emerald-700 font-medium">
-                  <CheckCircle size={13} /> تم ضبط المصنع بنجاح. النظام الآن نظيف.
-                </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         )}
 

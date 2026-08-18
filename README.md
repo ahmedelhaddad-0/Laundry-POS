@@ -1,4 +1,4 @@
-# 🧺 Denur Laundry POS (دينور لاندري)
+# 🧺Laundry POS By Hadrex
 
 <div align="center">
 
@@ -37,7 +37,7 @@
 
 ## 🌟 Overview
 
-**Denur Laundry POS (دينور لاندري)** is a full-featured Point of Sale (POS) and operational enterprise application tailored specifically for commercial laundries, dry cleaners, ironing stations, and garment/shoe care facilities.
+**Laundry POS** is a full-featured Point of Sale (POS) and operational enterprise application tailored specifically for commercial laundries, dry cleaners, ironing stations, and garment/shoe care facilities.
 
 The system is built from the ground up to provide an intuitive, high-speed user experience with complete **Right-to-Left (RTL)** Arabic localization and support for dual runtime environments:
 

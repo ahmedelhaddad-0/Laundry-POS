@@ -339,60 +339,44 @@ function setSetting(key, value) {
 // ── Reports ───────────────────────────────────────────────────────────────────
 
 function getMonthlyReport() {
-  // SQL-computed monthly stats from real order data
-  const liveMonths = exec(`
-    SELECT
-      CASE
-        WHEN date LIKE '%يناير%' THEN 'يناير'
-        WHEN date LIKE '%فبراير%' THEN 'فبراير'
-        WHEN date LIKE '%مارس%' THEN 'مارس'
-        WHEN date LIKE '%أبريل%' THEN 'أبريل'
-        WHEN date LIKE '%مايو%' THEN 'مايو'
-        WHEN date LIKE '%يونيو%' THEN 'يونيو'
-        ELSE 'أخرى'
-      END AS month,
-      SUM(CASE WHEN status != 'batal' THEN total ELSE 0 END) AS pendapatan,
-      COUNT(CASE WHEN status != 'batal' THEN 1 END) AS "order"
-    FROM orders
-    GROUP BY month
-  `);
-  // Merge with static historical data for months not in the DB
-  const historical = [
-    { month: "يناير", pendapatan: 28500000, order: 312, pelanggan: 28 },
-    { month: "فبراير", pendapatan: 24200000, order: 276, pelanggan: 22 },
-    { month: "مارس",  pendapatan: 31800000, order: 358, pelanggan: 34 },
-    { month: "أبريل", pendapatan: 29100000, order: 334, pelanggan: 29 },
-    { month: "مايو",  pendapatan: 33600000, order: 374, pelanggan: 31 },
-    { month: "يونيو", pendapatan: 0,         order: 0,   pelanggan: 0  },
-  ];
-  const live = Object.fromEntries(liveMonths.map((r) => [r.month, r]));
-  return historical.map((h) => {
-    const l = live[h.month];
-    return l
-      ? { month: h.month, pendapatan: Number(l.pendapatan) || h.pendapatan, order: Number(l.order) || h.order, pelanggan: h.pelanggan }
-      : h;
+  const allOrders = exec(`SELECT date, total FROM orders WHERE status != 'batal'`);
+  const byMonth = {};
+  allOrders.forEach((o) => {
+    const parts = String(o.date || "").split(" ");
+    if (parts.length >= 2) {
+      const month = parts[1];
+      if (!byMonth[month]) byMonth[month] = { pendapatan: 0, order: 0 };
+      byMonth[month].pendapatan += Number(o.total) || 0;
+      byMonth[month].order += 1;
+    }
   });
+  return Object.entries(byMonth).map(([month, data]) => ({
+    month,
+    pendapatan: data.pendapatan,
+    order: data.order,
+    pelanggan: 0,
+  }));
 }
 
 function getWeeklyChart() {
-  const days = ["الأحد","الاثنين","الثلاثاء","الأربعاء","الخميس","الجمعة","السبت"];
-  const base = [
-    { day: "الاثنين",   pendapatan: 1850000, transaksi: 24 },
-    { day: "الثلاثاء",  pendapatan: 2340000, transaksi: 31 },
-    { day: "الأربعاء",  pendapatan: 1920000, transaksi: 26 },
-    { day: "الخميس",   pendapatan: 2780000, transaksi: 37 },
-    { day: "الجمعة",   pendapatan: 3120000, transaksi: 43 },
-    { day: "السبت",    pendapatan: 2460000, transaksi: 33 },
-    { day: "الأحد",    pendapatan: 0,        transaksi: 0 },
-  ];
-  // Override today's entry with live data
-  const todayOrders = exec(`SELECT SUM(total) AS rev, COUNT(*) AS cnt FROM orders WHERE date='5 يونيو 2026' AND status!='batal'`);
-  if (todayOrders.length > 0) {
-    const last = base[base.length - 1];
-    last.pendapatan = Number(todayOrders[0].rev) || 0;
-    last.transaksi  = Number(todayOrders[0].cnt) || 0;
+  const months = ["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"];
+  const dayNames = ["الأحد","الاثنين","الثلاثاء","الأربعاء","الخميس","الجمعة","السبت"];
+  const result = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const dateStr = `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+    const q = exec(
+      `SELECT COALESCE(SUM(total),0) AS rev, COUNT(*) AS cnt FROM orders WHERE date=? AND status!='batal'`,
+      [dateStr]
+    );
+    result.push({
+      day: dayNames[d.getDay()],
+      pendapatan: Number(q[0]?.rev) || 0,
+      transaksi: Number(q[0]?.cnt) || 0,
+    });
   }
-  return base;
+  return result;
 }
 
 function factoryReset() {
@@ -402,7 +386,8 @@ function factoryReset() {
   db.run(`DELETE FROM customers`);
   db.run(`DELETE FROM services`);
   db.run(`DELETE FROM inventory`);
-  // Re-seed config tables (services + inventory + test customer)
+  db.run(`DELETE FROM settings`);
+  // Re-seed default services, test customer, and default settings
   seedData();
 }
 

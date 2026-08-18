@@ -1,4 +1,4 @@
-import { useState, useEffect, createContext, useContext } from "react";
+import { useState, useEffect, createContext, useContext, useMemo } from "react";
 import type React from "react";
 import type {
   AppCtx, Order, Customer, ServiceItem, InventoryItem,
@@ -94,15 +94,8 @@ async function unwrap<T>(promise: Promise<ElectronResult<T>>): Promise<T | null>
   return res.data;
 }
 
-const EMPTY_WEEKLY: WeeklyChartPoint[] = [
-  { day: "الاثنين",  pendapatan: 0, transaksi: 0 },
-  { day: "الثلاثاء", pendapatan: 0, transaksi: 0 },
-  { day: "الأربعاء", pendapatan: 0, transaksi: 0 },
-  { day: "الخميس",  pendapatan: 0, transaksi: 0 },
-  { day: "الجمعة",  pendapatan: 0, transaksi: 0 },
-  { day: "السبت",   pendapatan: 0, transaksi: 0 },
-  { day: "الأحد",   pendapatan: 0, transaksi: 0 },
-];
+const AR_MONTHS = ["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"];
+const AR_DAYS   = ["الأحد","الاثنين","الثلاثاء","الأربعاء","الخميس","الجمعة","السبت"];
 
 // ── Provider ──────────────────────────────────────────────────────────────────
 
@@ -120,9 +113,42 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [stockHistory, setStockHistory] = useState<StockEntry[]>([]);
   const [treasury, setTreasury] = useState<TreasuryEntry[]>([]);
   const [currency, setCurrencyState] = useState("ج.م");
-  const [monthlyReport, setMonthlyReport] = useState<MonthlyReport[]>([]);
-  const [weeklyChart, setWeeklyChart] = useState<WeeklyChartPoint[]>(EMPTY_WEEKLY);
   const [loading, setLoading] = useState(true);
+
+  // ── Derived charts (always in sync with real order data) ──────────────────
+
+  const weeklyChart = useMemo<WeeklyChartPoint[]>(() => {
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - (6 - i));
+      const dateStr = `${d.getDate()} ${AR_MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+      const dayOrders = orders.filter((o) => o.date === dateStr && o.status !== "batal");
+      return {
+        day: AR_DAYS[d.getDay()],
+        pendapatan: dayOrders.reduce((a, o) => a + o.total, 0),
+        transaksi: dayOrders.length,
+      };
+    });
+  }, [orders]);
+
+  const monthlyReport = useMemo<MonthlyReport[]>(() => {
+    const byMonth: Record<string, { pendapatan: number; order: number }> = {};
+    orders.filter((o) => o.status !== "batal").forEach((o) => {
+      const parts = o.date.split(" ");
+      if (parts.length === 3) {
+        const month = parts[1];
+        if (!byMonth[month]) byMonth[month] = { pendapatan: 0, order: 0 };
+        byMonth[month].pendapatan += o.total;
+        byMonth[month].order += 1;
+      }
+    });
+    return Object.entries(byMonth).map(([month, data]) => ({
+      month,
+      pendapatan: data.pendapatan,
+      order: data.order,
+      pelanggan: customers.filter((c) => c.joinDate.split(" ")[0] === month).length,
+    }));
+  }, [orders, customers]);
 
   // ── Initial load ──────────────────────────────────────────────────────────
 
@@ -134,13 +160,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setInventory(INIT_INVENTORY.map((i) => ({ ...i, icon: resolveIcon(i.icon) })));
       setStockHistory(INIT_STOCK_HISTORY);
       setTreasury(INIT_TREASURY);
-      setMonthlyReport([]);
-      setWeeklyChart(EMPTY_WEEKLY);
       setLoading(false);
       return;
     }
 
-    // Electron: load everything from SQLite
     Promise.all([
       unwrap(api!.getOrders()),
       unwrap(api!.getCustomers()),
@@ -149,21 +172,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       unwrap(api!.getStockHistory()),
       unwrap(api!.getTreasury()),
       unwrap(api!.getSetting("currency")),
-      unwrap(api!.getMonthlyReport()),
-      unwrap(api!.getWeeklyChart()),
-    ]).then(([ord, cust, svc, inv, hist, treas, curr, monthly, weekly]) => {
-      if (ord)     setOrders(ord);
-      if (cust)    setCustomers(cust);
-      if (svc)     setServices(svc);
-      if (inv)     setInventory(inv.map((i) => ({ ...i, icon: resolveIcon(i.icon) })));
-      if (hist)    setStockHistory(hist);
-      if (treas)   setTreasury(treas);
-      if (curr)    setCurrencyState(curr);
-      if (monthly) setMonthlyReport(monthly);
-      setWeeklyChart(weekly ?? EMPTY_WEEKLY);
+    ]).then(([ord, cust, svc, inv, hist, treas, curr]) => {
+      if (ord)   setOrders(ord);
+      if (cust)  setCustomers(cust);
+      if (svc)   setServices(svc);
+      if (inv)   setInventory(inv.map((i) => ({ ...i, icon: resolveIcon(i.icon) })));
+      if (hist)  setStockHistory(hist);
+      if (treas) setTreasury(treas);
+      if (curr)  setCurrencyState(curr);
       setLoading(false);
     });
   }, [isElectron]);
+
+  // ── Treasury helper ───────────────────────────────────────────────────────
+
+  function recordTreasury(entry: Omit<TreasuryEntry, "id">) {
+    setTreasury((prev) => {
+      const newEntry = { ...entry, id: nextId(prev) };
+      const updated = [newEntry, ...prev];
+      api?.addTreasuryEntry(entry);
+      return updated;
+    });
+  }
 
   // ── Orders ────────────────────────────────────────────────────────────────
 
@@ -172,15 +202,41 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const newOrder = { ...data, id };
     setOrders((p) => [newOrder, ...p]);
     api?.addOrder(newOrder);
+    // Auto-credit treasury if created directly as completed
+    if (data.status === "selesai") {
+      const s = nowStamp();
+      recordTreasury({ date: s.date, time: s.time, type: "إيداع", amount: data.total, employee: "النظام (تلقائي)", reason: `إيراد طلب ${id} — ${data.customer}` });
+    }
     return id;
   };
 
   const updateOrder = (id: string, data: Partial<Order>) => {
+    const cur = orders.find((o) => o.id === id);
+    if (cur) {
+      const wasSelesai = cur.status === "selesai";
+      const willBeSelesai = data.status === "selesai";
+      const willBeBatal  = data.status === "batal";
+      const s = nowStamp();
+      if (!wasSelesai && willBeSelesai) {
+        // Order just completed → credit treasury
+        const amount = data.total ?? cur.total;
+        recordTreasury({ date: s.date, time: s.time, type: "إيداع", amount, employee: "النظام (تلقائي)", reason: `إيراد طلب ${id} — ${cur.customer}` });
+      } else if (wasSelesai && willBeBatal) {
+        // Completed order cancelled → reverse treasury entry
+        recordTreasury({ date: s.date, time: s.time, type: "سحب", amount: cur.total, employee: "النظام (تلقائي)", reason: `إلغاء طلب ${id} — ${cur.customer}` });
+      }
+    }
     setOrders((p) => p.map((o) => (o.id === id ? { ...o, ...data } : o)));
     api?.updateOrder(id, data);
   };
 
   const deleteOrder = (id: string) => {
+    const cur = orders.find((o) => o.id === id);
+    if (cur && cur.status === "selesai") {
+      // Deleting a completed order → reverse treasury entry
+      const s = nowStamp();
+      recordTreasury({ date: s.date, time: s.time, type: "سحب", amount: cur.total, employee: "النظام (تلقائي)", reason: `حذف طلب ${id} — ${cur.customer}` });
+    }
     setOrders((p) => p.filter((o) => o.id !== id));
     api?.deleteOrder(id);
   };
@@ -270,17 +326,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const addInventoryItem = (data: Omit<InventoryItem, "id">) => {
     const resolved = { ...data, icon: resolveIcon(data.icon as unknown) };
     setInventory((p) => [...p, { ...resolved, id: nextId(p) }]);
-    const iconName = typeof data.icon === "function" ? (data.icon as React.ElementType).name ?? "Package" : String(data.icon);
+    const iconName = typeof data.icon === "function" ? (data.icon as React.ElementType & { name?: string }).name ?? "Package" : String(data.icon);
     api?.addInventoryItem({ ...data, icon: iconName } as never);
   };
 
   const updateInventoryItem = (id: number, data: Partial<InventoryItem>) => {
-    // Resolve icon string → component for React state
     const stateData = data.icon && typeof data.icon !== "function"
       ? { ...data, icon: resolveIcon(data.icon) }
       : data;
     setInventory((p) => p.map((i) => (i.id === id ? { ...i, ...stateData } : i)));
-    // Convert icon component → string name for IPC/DB
     const dbData = data.icon && typeof data.icon === "function"
       ? { ...data, icon: (data.icon as React.ElementType & { name?: string }).name ?? "Package" }
       : data;
@@ -295,8 +349,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // ── Treasury ──────────────────────────────────────────────────────────────
 
   const addTreasuryEntry = (data: Omit<TreasuryEntry, "id">) => {
-    setTreasury((p) => [{ ...data, id: nextId(p) }, ...p]);
-    api?.addTreasuryEntry(data);
+    recordTreasury(data);
   };
 
   // ── Currency ──────────────────────────────────────────────────────────────
@@ -311,23 +364,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const factoryReset = async () => {
     if (isElectron) {
       await api!.factoryReset();
-      // Reload services and inventory from DB (they are re-seeded)
-      const [svc, inv] = await Promise.all([
+      const [svc, inv, curr] = await Promise.all([
         unwrap(api!.getServices()),
         unwrap(api!.getInventory()),
+        unwrap(api!.getSetting("currency")),
       ]);
       if (svc) setServices(svc);
       if (inv) setInventory(inv.map((i) => ({ ...i, icon: resolveIcon(i.icon) })));
+      if (curr) setCurrencyState(curr);
     } else {
       setServices(INIT_SERVICES);
       setInventory(INIT_INVENTORY.map((i) => ({ ...i, icon: resolveIcon(i.icon) })));
+      setCurrencyState("ج.م");
     }
     setOrders([]);
     setCustomers(INIT_CUSTOMERS);
     setStockHistory([]);
     setTreasury([]);
-    setMonthlyReport([]);
-    setWeeklyChart(EMPTY_WEEKLY);
   };
 
   // ── Context value ─────────────────────────────────────────────────────────
